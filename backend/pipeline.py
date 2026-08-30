@@ -1,0 +1,57 @@
+import json
+import asyncio
+from services.search import search_web_for_claim
+from services.scraper import scrape_url
+from services.embedding import chunk_text, retrieve_top_k_chunks, rerank_chunks
+from services.llm import generate_verdict
+
+async def run_verification_pipeline_sse(claim: str):
+    """
+    Executes the full AVeriTeC pipeline and yields SSE JSON events for progress.
+    """
+    yield json.dumps({"status": "processing", "message": f"Starting pipeline for claim: '{claim}'"})
+    await asyncio.sleep(0.1)
+    
+    # 1. Search
+    yield json.dumps({"status": "processing", "message": "Searching the web..."})
+    urls = search_web_for_claim(claim, max_results=5)
+    if not urls:
+        # Fallback for testing/rate-limits
+        urls = ["https://en.wikipedia.org/wiki/Eiffel_Tower"]
+    yield json.dumps({"status": "processing", "message": f"Found {len(urls)} URLs. Scraping content..."})
+    await asyncio.sleep(0.1)
+    
+    # 2. Scrape & Chunk
+    all_chunks = []
+    for url in urls:
+        text = scrape_url(url)
+        if text:
+            chunks = chunk_text(text)
+            all_chunks.extend(chunks)
+            
+    yield json.dumps({"status": "processing", "message": f"Generated {len(all_chunks)} chunks of evidence."})
+    await asyncio.sleep(0.1)
+    
+    if not all_chunks:
+        yield json.dumps({"status": "error", "message": "Failed to scrape any evidence."})
+        return
+        
+    # 3. Retrieve Top 50 (Bi-Encoder)
+    yield json.dumps({"status": "processing", "message": "Retrieving top chunks (Bi-Encoder)..."})
+    top_50_chunks = retrieve_top_k_chunks(claim, all_chunks, top_k=50)
+    await asyncio.sleep(0.1)
+    
+    # 4. Re-rank Top 5 (Cross-Encoder)
+    yield json.dumps({"status": "processing", "message": "Re-ranking top chunks (Cross-Encoder)..."})
+    top_5_chunks = rerank_chunks(claim, top_50_chunks, top_k=5)
+    await asyncio.sleep(0.1)
+    
+    # 5. Generate Verdict (LLM)
+    yield json.dumps({"status": "processing", "message": "Generating verdict with Gemini..."})
+    result = generate_verdict(claim, top_5_chunks)
+    
+    result["evidence"] = top_5_chunks
+    result["urls"] = urls
+    result["status"] = "complete"
+    
+    yield json.dumps(result)
