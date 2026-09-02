@@ -92,10 +92,10 @@ graph TD
 *   [x] Implement user authentication to track GEMs securely.
 
 ### Phase 4: Frontend Development
-*   [ ] Build the Input Page with comprehensive loading states (the AVeriTeC pipeline will take several seconds to run).
-*   [ ] Build the Results Page to display the Verdict, Evidence, and Explanation clearly.
-*   [ ] Implement the Complaint UI flow (Source URL input -> Draft Review text area -> Confirm button).
-*   [ ] Build the Gamification Leaderboard UI.
+*   [x] Build the Input Page with comprehensive loading states (the AVeriTeC pipeline will take several seconds to run).
+*   [x] Build the Results Page to display the Verdict, Evidence, and Explanation clearly.
+*   [x] Implement the Complaint UI flow (Source URL input -> Draft Review text area -> Confirm button).
+*   [x] Build the Gamification Leaderboard UI.
 
 ### Phase 5: Email & Final Polish
 *   [ ] Integrate an Email provider (e.g., Resend, SendGrid) to dispatch confirmed complaints.

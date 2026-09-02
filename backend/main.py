@@ -17,10 +17,11 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="NewsCloud Verification API")
 
-from routers import auth, claims
+from routers import auth, claims, complaints
 
 app.include_router(auth.router)
 app.include_router(claims.router)
+app.include_router(complaints.router)
 
 # Setup CORS for frontend communication
 app.add_middleware(

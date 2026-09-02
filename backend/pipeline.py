@@ -14,10 +14,13 @@ async def run_verification_pipeline_sse(claim: str):
     
     # 1. Search
     yield json.dumps({"status": "processing", "message": "Searching the web..."})
-    urls = search_web_for_claim(claim, max_results=5)
+    search_results = search_web_for_claim(claim, max_results=5)
+    urls = search_results["urls"]
+    snippets = search_results["snippets"]
+    
     if not urls:
-        # Fallback for testing/rate-limits
-        urls = ["https://en.wikipedia.org/wiki/Eiffel_Tower"]
+        yield json.dumps({"status": "error", "message": "Failed to find any relevant search results to verify this claim."})
+        return
     yield json.dumps({"status": "processing", "message": f"Found {len(urls)} URLs. Scraping content..."})
     await asyncio.sleep(0.1)
     
@@ -32,25 +35,30 @@ async def run_verification_pipeline_sse(claim: str):
     yield json.dumps({"status": "processing", "message": f"Generated {len(all_chunks)} chunks of evidence."})
     await asyncio.sleep(0.1)
     
-    if not all_chunks:
-        yield json.dumps({"status": "error", "message": "Failed to scrape any evidence."})
+    top_5_chunks = []
+    if all_chunks:
+        # 3. Retrieve Top 50 (Bi-Encoder)
+        yield json.dumps({"status": "processing", "message": "Retrieving top chunks (Bi-Encoder)..."})
+        top_50_chunks = retrieve_top_k_chunks(claim, all_chunks, top_k=50)
+        await asyncio.sleep(0.1)
+        
+        # 4. Re-rank Top 5 (Cross-Encoder)
+        yield json.dumps({"status": "processing", "message": "Re-ranking top chunks (Cross-Encoder)..."})
+        top_5_chunks = rerank_chunks(claim, top_50_chunks, top_k=5)
+        await asyncio.sleep(0.1)
+    
+    # Combine search snippets (which often contain the direct answer) with the deep-dive semantic chunks
+    final_evidence = [f"Search Result Summary: {s}" for s in snippets] + top_5_chunks
+    
+    if not final_evidence:
+        yield json.dumps({"status": "error", "message": "Failed to gather any evidence."})
         return
         
-    # 3. Retrieve Top 50 (Bi-Encoder)
-    yield json.dumps({"status": "processing", "message": "Retrieving top chunks (Bi-Encoder)..."})
-    top_50_chunks = retrieve_top_k_chunks(claim, all_chunks, top_k=50)
-    await asyncio.sleep(0.1)
-    
-    # 4. Re-rank Top 5 (Cross-Encoder)
-    yield json.dumps({"status": "processing", "message": "Re-ranking top chunks (Cross-Encoder)..."})
-    top_5_chunks = rerank_chunks(claim, top_50_chunks, top_k=5)
-    await asyncio.sleep(0.1)
-    
     # 5. Generate Verdict (LLM)
     yield json.dumps({"status": "processing", "message": "Generating verdict with Gemini..."})
-    result = generate_verdict(claim, top_5_chunks)
+    result = generate_verdict(claim, final_evidence)
     
-    result["evidence"] = top_5_chunks
+    result["evidence"] = final_evidence
     result["urls"] = urls
     result["status"] = "complete"
     
